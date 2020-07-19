@@ -37,11 +37,15 @@ program xsem_interp_IRIS_netcdf
   use sem_mesh
   use sem_utils
   use geographic
+  use sem_parallel
   use netcdf
 
   implicit none
 
   !===== declare variables
+
+  !-- mpi
+  integer :: myrank, nrank
 
   ! command line args
   integer, parameter :: nargs = 7
@@ -91,12 +95,18 @@ program xsem_interp_IRIS_netcdf
   real(dp) :: lat0, lat1, lon0, lon1, depth0, depth1
   real(dp) :: wx0, wx1, wy0, wy1, wz0, wz1
 
+  !===== start MPI
+
+  call init_mpi()
+  call world_size(nrank)
+  call world_rank(myrank)
+
   !===== read command line arguments
 
   if (command_argument_count() /= nargs) then
     call selfdoc()
     print *, "[ERROR] xsem_interp_IRIS_netcdf: check your input arguments."
-    stop
+    call abort_mpi()
   endif
 
   do i = 1, nargs
@@ -113,7 +123,7 @@ program xsem_interp_IRIS_netcdf
   !-- validate input arguments
   if (flag_ellipticity /= 0 .and. flag_ellipticity /= 1) then
     print *, "[ERROR] flag_ellipticity must be 0/1"
-    stop
+    call abort_mpi()
   endif
 
   !===== parse model tags
@@ -162,7 +172,7 @@ program xsem_interp_IRIS_netcdf
   ! sanity check
   if (lon_var(1) > lon_var(nlon)) then
     print *, "[ERROR] longitude coordinates cross +/-180 deg."
-    stop
+    call abort_mpi()
   endif
   max_lon_var = maxval(lon_var)
   min_lon_var = minval(lon_var)
@@ -172,7 +182,8 @@ program xsem_interp_IRIS_netcdf
   min_depth_var = minval(depth_var)
 
   !===== loop each mesh slice
-  do iproc = 0, (nproc - 1)
+  ! do iproc = 0, (nproc - 1)
+  do iproc = myrank, (nproc - 1), nrank
   !do iproc = 2, 2
 
     print *, '# iproc=', iproc
@@ -271,6 +282,10 @@ program xsem_interp_IRIS_netcdf
 
   enddo ! iproc
 
+  !===== exit MPI
+  call synchronize_all()
+  call finalize_mpi()
+
 !********************
 contains
 
@@ -279,7 +294,7 @@ subroutine check(status)
   
   if(status /= nf90_noerr) then 
     print "('[ERROR] ',a)", trim(nf90_strerror(status))
-    stop
+    call abort_mpi()
   endif
 end subroutine check 
 
